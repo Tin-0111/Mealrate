@@ -8,16 +8,7 @@
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js';
     import {
-      getFirestore,
-      collection,
-      doc,
-      getDoc,
-      getDocs,
-      setDoc,
-      updateDoc,
-      increment,
-      query,
-      where
+      getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, increment
     } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js';
 
     const firebaseConfig = {
@@ -32,22 +23,6 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    const rateButton = document.getElementById('rate-button');
-    const ratingSection = document.getElementById('rating-section');
-    const mealBox = document.getElementById('meal-box');
-    const menuTitle = document.getElementById('menu-title');
-    const starContainer = document.getElementById('star-container');
-    const prevButton = document.getElementById('prev-button');
-    const nextButton = document.getElementById('next-button');
-    const thankYou = document.getElementById('thank-you');
-    const homeButton = document.getElementById('home-button');
-    const warning = document.getElementById('warning');
-    const avgRatingBox = document.getElementById('average-rating');
-
-    let menus = [];
-    const ratings = {};
-    let currentIndex = 0;
-
     const userId = localStorage.getItem('meal-rating-id') || crypto.randomUUID();
     localStorage.setItem('meal-rating-id', userId);
 
@@ -56,103 +31,100 @@
     const minute = now.getMinutes();
     const canRate = (hour > 13 || (hour === 13 && minute >= 0)) && (hour < 24);
 
-    const today = new Date().toLocaleDateString('ko-KR', {
-      timeZone: 'Asia/Seoul',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    }).replace(/\. /g, '').replace('.', '');
+    let menus = [];
+    const ratings = {};
+    let currentIndex = 0;
 
-    async function fetchMeal() {
+    const mealBox = document.getElementById('meal-box');
+    const avgBox = document.getElementById('average-box');
+    const avgHistory = document.getElementById('avg-history');
+    const avgToday = document.getElementById('avg-today');
+    const redButton = document.getElementById('show-history');
+    const yellowButton = document.getElementById('show-today');
+
+    const rateButton = document.getElementById('rate-button');
+    const ratingSection = document.getElementById('rating-section');
+    const menuTitle = document.getElementById('menu-title');
+    const starContainer = document.getElementById('star-container');
+    const prevButton = document.getElementById('prev-button');
+    const nextButton = document.getElementById('next-button');
+    const warning = document.getElementById('warning');
+    const thankYou = document.getElementById('thank-you');
+    const homeButton = document.getElementById('home-button');
+
+    async function fetchMealData() {
+      const today = new Date().toLocaleDateString('ko-KR', {
+        timeZone: 'Asia/Seoul',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).replace(/\. /g, '').replace('.', '');
+
       const url = `https://open.neis.go.kr/hub/mealServiceDietInfo?KEY=12524cf433f544708e5fdec54b0ba13d&Type=json&ATPT_OFCDC_SC_CODE=J10&SD_SCHUL_CODE=7530858&MLSV_YMD=${today}`;
+
       try {
         const response = await fetch(url);
         const data = await response.json();
         const mealInfo = data.mealServiceDietInfo?.[1]?.row?.[0]?.DDISH_NM;
 
         if (mealInfo) {
-          const mealFormatted = mealInfo.replace(/<br\/?/g, '\n');
-          document.getElementById('meal').innerText = mealFormatted;
-          menus = mealFormatted.split('\n').map(s => s.trim()).filter(Boolean);
+          const mealFormatted = mealInfo.replace(/<br\/?>/g, '\n');
+          mealBox.innerText = mealFormatted;
+          menus = mealFormatted.split('\n');
         } else {
-          document.getElementById('meal').innerText = '오늘은 등록된 급식이 없습니다.';
+          mealBox.innerText = '오늘은 등록된 급식이 없습니다.';
         }
-      } catch (error) {
-        document.getElementById('meal').innerText = '급식 정보를 불러오는 데 실패했습니다.';
+      } catch {
+        mealBox.innerText = '급식 정보를 불러오는 데 실패했습니다.';
       }
     }
 
-    async function showAverageRatings() {
-      const allSnapshots = await getDocs(collection(db, 'ratings'));
-      const todayRatings = {}, todayCounts = {};
-      const historyRef = collection(db, 'history');
-      const historyData = {};
+    async function showRatings() {
+      avgHistory.innerHTML = '';
+      avgToday.innerHTML = '';
 
-      allSnapshots.forEach(docSnap => {
-        const data = docSnap.data();
-        if (data.date === today) {
-          for (const [menu, score] of Object.entries(data)) {
-            if (menu === 'date') continue;
-            if (!todayRatings[menu]) {
-              todayRatings[menu] = 0;
-              todayCounts[menu] = 0;
-            }
-            todayRatings[menu] += score;
-            todayCounts[menu]++;
+      const [snapshots, todaySnap] = await Promise.all([
+        getDocs(collection(db, 'history')),
+        getDocs(collection(db, 'ratings'))
+      ]);
+
+      const todaySum = {}, todayCount = {};
+      todaySnap.forEach(doc => {
+        const data = doc.data();
+        for (const m in data) {
+          if (!todaySum[m]) {
+            todaySum[m] = 0;
+            todayCount[m] = 0;
           }
+          todaySum[m] += data[m];
+          todayCount[m]++;
         }
       });
 
-      const historyDocs = await getDocs(historyRef);
-      historyDocs.forEach(doc => {
-        historyData[doc.id] = doc.data();
+      const todayLines = Object.keys(todaySum).map(menu => {
+        const avg = (todaySum[menu] / todayCount[menu]).toFixed(1);
+        return `<div>🟡 ${menu}: ${avg} (${todayCount[menu]})</div>`;
       });
 
-      const lines = menus.map(menu => {
-        const todayAvg = todayRatings[menu] ? (todayRatings[menu] / todayCounts[menu]).toFixed(1) : '-';
-        const todayCnt = todayCounts[menu] || 0;
+      avgToday.innerHTML = todayLines.join('');
 
-        const hist = historyData[menu];
-        const histAvg = hist ? (hist.sum / hist.count).toFixed(1) : '-';
-        const histCnt = hist ? hist.count : 0;
-
-        return `🔴 ${menu}: ★ ${histAvg} (${histCnt})<br>🟡 ★ ${todayAvg} (${todayCnt})`;
+      const historyMap = {};
+      snapshots.forEach(doc => {
+        historyMap[doc.id] = doc.data();
       });
 
-      avgRatingBox.innerHTML = lines.join('<br><br>');
-      avgRatingBox.classList.remove('hidden');
+      const historyLines = Object.keys(historyMap).map(menu => {
+        const { sum, count } = historyMap[menu];
+        const avg = (sum / count).toFixed(1);
+        return `<div>🔴 ${menu}: ${avg} (${count})</div>`;
+      });
+
+      avgHistory.innerHTML = historyLines.join('');
     }
-
-    async function init() {
-      await fetchMeal();
-      await showAverageRatings();
-
-      if (!canRate) {
-        rateButton.disabled = true;
-        rateButton.textContent = '평가 가능 시간은 오후 1시부터입니다';
-        return;
-      }
-
-      const docRef = doc(db, 'ratings', `${today}_${userId}`);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        rateButton.disabled = true;
-        rateButton.textContent = '이미 평가하셨습니다';
-      }
-    }
-
-    rateButton.addEventListener('click', () => {
-      if (menus.length === 0) return;
-      rateButton.classList.add('hidden');
-      mealBox.classList.add('hidden');
-      avgRatingBox.classList.add('hidden');
-      ratingSection.classList.remove('hidden');
-      showMenu(currentIndex);
-    });
 
     function showMenu(index) {
       const menu = menus[index];
-      menuTitle.textContent = `${menu}`;
+      menuTitle.textContent = menu;
       renderStars(menu);
       prevButton.disabled = index === 0;
       nextButton.textContent = index === menus.length - 1 ? '제출' : '다음';
@@ -165,7 +137,7 @@
       for (let i = 1; i <= 5; i++) {
         const star = document.createElement('span');
         star.textContent = i <= selected ? '★' : '☆';
-        star.className = 'text-2xl cursor-pointer text-yellow-500';
+        star.className = 'text-2xl cursor-pointer';
         star.addEventListener('click', () => {
           ratings[menu] = i;
           renderStars(menu);
@@ -173,6 +145,17 @@
         starContainer.appendChild(star);
       }
     }
+
+    rateButton.addEventListener('click', () => {
+      if (!menus.length) return;
+      rateButton.classList.add('hidden');
+      redButton.classList.add('hidden');
+      yellowButton.classList.add('hidden');
+      mealBox.classList.add('hidden');
+      avgBox.classList.add('hidden');
+      ratingSection.classList.remove('hidden');
+      showMenu(currentIndex);
+    });
 
     prevButton.addEventListener('click', () => {
       if (currentIndex > 0) {
@@ -192,46 +175,88 @@
         currentIndex++;
         showMenu(currentIndex);
       } else {
-        const todayDoc = doc(db, 'ratings', `${today}_${userId}`);
-        await setDoc(todayDoc, { date: today, ...ratings });
+        await setDoc(doc(db, 'ratings', userId), ratings);
 
-        for (const [menu, score] of Object.entries(ratings)) {
-          const histRef = doc(db, 'history', menu);
-          await updateDoc(histRef, {
-            sum: increment(score),
+        // history 업데이트
+        for (const menu in ratings) {
+          const menuRef = doc(db, 'history', menu);
+          await updateDoc(menuRef, {
+            sum: increment(ratings[menu]),
             count: increment(1)
           }).catch(async () => {
-            await setDoc(histRef, { sum: score, count: 1 });
+            await setDoc(menuRef, {
+              sum: ratings[menu],
+              count: 1
+            });
           });
         }
 
         ratingSection.classList.add('hidden');
         thankYou.classList.remove('hidden');
-        showAverageRatings();
+        showRatings();
       }
     });
 
-    homeButton.addEventListener('click', () => {
-      location.reload();
+    homeButton.addEventListener('click', () => location.reload());
+
+    redButton.addEventListener('click', () => {
+      avgBox.classList.remove('hidden');
+      avgHistory.classList.remove('hidden');
+      avgToday.classList.add('hidden');
     });
+
+    yellowButton.addEventListener('click', () => {
+      avgBox.classList.remove('hidden');
+      avgToday.classList.remove('hidden');
+      avgHistory.classList.add('hidden');
+    });
+
+    async function init() {
+      await fetchMealData();
+      await showRatings();
+
+      const ratedSnap = await getDoc(doc(db, 'ratings', userId));
+      if (ratedSnap.exists()) {
+        rateButton.disabled = true;
+        rateButton.textContent = '이미 평가하셨습니다';
+      }
+
+      if (!canRate) {
+        rateButton.disabled = true;
+        rateButton.textContent = '평가 가능 시간은 오후 1시부터입니다';
+      }
+    }
 
     window.onload = init;
   </script>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
-  <div class="w-full max-w-md bg-white p-6 rounded-2xl shadow-md">
-    <h1 class="text-2xl font-bold mb-4 text-center">오늘의 급식</h1>
-    <div id="meal-box" class="bg-gray-50 p-4 rounded-xl border text-center mb-4">
-      <div id="meal">급식 정보를 불러오는 중...</div>
+  <div class="w-full max-w-md bg-white p-6 rounded-2xl shadow-md space-y-4">
+    <h1 class="text-2xl font-bold text-center">오늘의 급식</h1>
+    <div id="meal-box" class="bg-gray-100 p-4 rounded-xl border text-center whitespace-pre-wrap">
+      급식 정보를 불러오는 중...
     </div>
-    <div id="average-rating" class="text-center text-sm text-gray-600 mb-2 hidden">
-      현재 평점 계산 중...
+
+    <div class="flex space-x-2">
+      <button id="show-history" class="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-xl">
+        역대 평점 보기
+      </button>
+      <button id="show-today" class="flex-1 bg-yellow-400 hover:bg-yellow-500 text-white font-semibold py-2 px-4 rounded-xl">
+        오늘 평점 보기
+      </button>
     </div>
+
+    <div id="average-box" class="text-sm text-gray-800 space-y-2 hidden">
+      <div id="avg-history" class="hidden"></div>
+      <div id="avg-today" class="hidden"></div>
+    </div>
+
     <button id="rate-button" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-xl disabled:opacity-50">
       평가하기
     </button>
-    <div id="rating-section" class="mt-6 hidden text-center">
-      <div id="rating-box" class="bg-gray-50 p-4 rounded-xl border">
+
+    <div id="rating-section" class="hidden text-center">
+      <div class="bg-gray-100 p-4 rounded-xl border">
         <div id="menu-title" class="text-lg font-semibold mb-2"></div>
         <div id="star-container" class="flex justify-center space-x-1 mb-2"></div>
         <div id="warning" class="text-red-500 text-sm h-4 mb-2"></div>
@@ -241,7 +266,8 @@
         </div>
       </div>
     </div>
-    <div id="thank-you" class="mt-6 hidden text-center">
+
+    <div id="thank-you" class="hidden text-center">
       <p class="text-green-600 font-semibold">제출되었습니다. 감사합니다! 🌟</p>
       <button id="home-button" class="mt-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-xl">홈으로</button>
     </div>
