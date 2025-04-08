@@ -103,7 +103,7 @@
 
       const todayLines = Object.keys(todaySum).map(menu => {
         const avg = (todaySum[menu] / todayCount[menu]).toFixed(1);
-        return `<div>🟡 ${menu}: ${avg} (${todayCount[menu]})</div>`;
+        return `<div>🟡 ${menu}: ⭐️${avg} (${todayCount[menu]})</div>`;
       });
 
       avgToday.innerHTML = todayLines.join('');
@@ -116,7 +116,7 @@
       const historyLines = Object.keys(historyMap).map(menu => {
         const { sum, count } = historyMap[menu];
         const avg = (sum / count).toFixed(1);
-        return `<div>🔴 ${menu}: ${avg} (${count})</div>`;
+        return `<div>🔴 ${menu}: ⭐️${avg} (${count})</div>`;
       });
 
       avgHistory.innerHTML = historyLines.join('');
