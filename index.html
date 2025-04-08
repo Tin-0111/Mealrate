@@ -92,6 +92,7 @@
       todaySnap.forEach(doc => {
         const data = doc.data();
         for (const m in data) {
+          if (!menus.includes(m)) continue;
           if (!todaySum[m]) {
             todaySum[m] = 0;
             todayCount[m] = 0;
@@ -110,6 +111,7 @@
 
       const historyMap = {};
       snapshots.forEach(doc => {
+        if (!menus.includes(doc.id)) return;
         historyMap[doc.id] = doc.data();
       });
 
@@ -177,7 +179,6 @@
       } else {
         await setDoc(doc(db, 'ratings', userId), ratings);
 
-        // history 업데이트
         for (const menu in ratings) {
           const menuRef = doc(db, 'history', menu);
           await updateDoc(menuRef, {
