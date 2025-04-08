@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>오늘의 급식 평점</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+  <div class="w-full max-w-md bg-white p-6 rounded-2xl shadow-md">
+    <h1 class="text-2xl font-bold mb-4 text-center">오늘의 급식</h1>
+
+    <!-- 급식 메뉴 상자 -->
+    <div id="meal-box" class="bg-gray-50 p-4 rounded-xl border text-center mb-4">
+      🍚 밥<br />🍗 치킨<br />🥗 샐러드
+    </div>
+
+    <!-- 현재 평점 표시 -->
+    <div id="average-rating" class="text-center text-sm text-gray-600 mb-2 hidden">현재 평점 계산 중...</div>
+
+    <!-- 평가하기 버튼 -->
+    <button id="rate-button" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-xl disabled:opacity-50">평가하기</button>
+
+    <!-- 별점 평가 화면 -->
+    <div id="rating-section" class="mt-6 hidden text-center">
+      <div id="rating-box" class="bg-gray-50 p-4 rounded-xl border">
+        <div id="menu-title" class="text-lg font-semibold mb-2"></div>
+        <div id="star-container" class="flex justify-center space-x-1 mb-2"></div>
+        <div id="warning" class="text-red-500 text-sm h-4 mb-2"></div>
+        <div class="flex justify-between">
+          <button id="prev-button" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-xl">이전</button>
+          <button id="next-button" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-1 px-3 rounded-xl">다음</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 제출 완료 메시지 -->
+    <div id="thank-you" class="mt-6 hidden text-center">
+      <p class="text-green-600 font-semibold">제출되었습니다. 감사합니다! 🌟</p>
+      <button id="home-button" class="mt-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-xl">홈으로</button>
+    </div>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyCuOQ3EYAMl5IRwNXhc4mcf9RgpoURnOgA",
+      authDomain: "mealrate-b757a.firebaseapp.com",
+      projectId: "mealrate-b757a",
+      storageBucket: "mealrate-b757a.appspot.com",
+      messagingSenderId: "427937261811",
+      appId: "1:427937261811:web:f70ced07ba5e41f9bcef86",
+      measurementId: "G-1X5LLJ4437"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    const menus = ['밥', '치킨', '샐러드'];
+    const ratings = {};
+    let currentIndex = 0;
+
+    const now = new Date();
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+    const canRate = (hour > 13 || (hour === 13 && minute >= 0)) && (hour < 24);
+
+    const rateButton = document.getElementById('rate-button');
+    const ratingSection = document.getElementById('rating-section');
+    const mealBox = document.getElementById('meal-box');
+    const menuTitle = document.getElementById('menu-title');
+    const starContainer = document.getElementById('star-container');
+    const prevButton = document.getElementById('prev-button');
+    const nextButton = document.getElementById('next-button');
+    const thankYou = document.getElementById('thank-you');
+    const homeButton = document.getElementById('home-button');
+    const warning = document.getElementById('warning');
+    const avgRatingBox = document.getElementById('average-rating');
+
+    // 유저 ID (간단하게 로컬 스토리지 사용)
+    const userId = localStorage.getItem('meal-rating-id') || crypto.randomUUID();
+    localStorage.setItem('meal-rating-id', userId);
+
+    // 이미 평가했는지 확인
+    db.collection('ratings').doc(userId).get().then(doc => {
+      if (doc.exists) {
+        rateButton.disabled = true;
+        rateButton.textContent = '이미 평가하셨습니다';
+      }
+    });
+
+    // 평균 평점 표시
+    async function showAverageRatings() {
+      const snapshot = await db.collection('ratings').get();
+      const sum = {}, count = {};
+
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        for (const menu of menus) {
+          if (!sum[menu]) sum[menu] = 0;
+          if (!count[menu]) count[menu] = 0;
+          if (data[menu]) {
+            sum[menu] += data[menu];
+            count[menu]++;
+          }
+        }
+      });
+
+      const lines = menus.map(menu => {
+        const avg = count[menu] ? (sum[menu] / count[menu]).toFixed(1) : '-';
+        return `${menu}: ⭐ ${avg}`;
+      });
+
+      avgRatingBox.innerHTML = lines.join('<br>');
+      avgRatingBox.classList.remove('hidden');
+    }
+
+    showAverageRatings();
+
+    if (!canRate) {
+      rateButton.disabled = true;
+      rateButton.textContent = '평가 가능 시간은 오후 1시부터입니다';
+    }
+
+    rateButton.addEventListener('click', () => {
+      rateButton.classList.add('hidden');
+      mealBox.classList.add('hidden');
+      avgRatingBox.classList.add('hidden');
+      ratingSection.classList.remove('hidden');
+      showMenu(currentIndex);
+    });
+
+    function showMenu(index) {
+      const menu = menus[index];
+      menuTitle.textContent = `${menu}`;
+      renderStars(menu);
+      prevButton.disabled = index === 0;
+      nextButton.textContent = index === menus.length - 1 ? '제출' : '다음';
+      warning.textContent = '';
+    }
+
+    function renderStars(menu) {
+      const selected = ratings[menu] || 0;
+      starContainer.innerHTML = '';
+      for (let i = 1; i <= 5; i++) {
+        const star = document.createElement('span');
+        star.textContent = i <= selected ? '★' : '☆';
+        star.className = 'text-2xl cursor-pointer';
+        star.addEventListener('click', () => {
+          ratings[menu] = i;
+          renderStars(menu);
+        });
+        starContainer.appendChild(star);
+      }
+    }
+
+    prevButton.addEventListener('click', () => {
+      if (currentIndex > 0) {
+        currentIndex--;
+        showMenu(currentIndex);
+      }
+    });
+
+    nextButton.addEventListener('click', async () => {
+      const currentMenu = menus[currentIndex];
+      if (!ratings[currentMenu]) {
+        warning.textContent = '별점을 매겨주세요!';
+        return;
+      }
+
+      if (currentIndex < menus.length - 1) {
+        currentIndex++;
+        showMenu(currentIndex);
+      } else {
+        // 제출
+        await db.collection('ratings').doc(userId).set(ratings);
+        ratingSection.classList.add('hidden');
+        thankYou.classList.remove('hidden');
+        showAverageRatings();
+      }
+    });
+
+    homeButton.addEventListener('click', () => {
+      location.reload();
+    });
+  </script>
+</body>
+</html>
