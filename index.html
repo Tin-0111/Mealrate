@@ -27,7 +27,12 @@
     localStorage.setItem('meal-rating-id', userId);
 
     const now = new Date();
-    const today = '20250423';
+    const today = new Date().toLocaleDateString('ko-KR', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).replace(/\. /g, '').replace('.', '');
 
     const hour = now.getHours();
     const minute = now.getMinutes();
