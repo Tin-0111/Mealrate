@@ -78,8 +78,6 @@
       }
     }
 
-    fetchMeal();
-
     async function showAverageRatings() {
       const snapshot = await getDocs(collection(db, 'ratings'));
       const sum = {}, count = {};
