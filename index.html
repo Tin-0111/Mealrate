@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>오늘의 급식 평점</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Firebase SDK v9 Modular Import Fix -->
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js';
     import { getFirestore, collection, doc, getDoc, getDocs, setDoc } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js';
@@ -34,6 +33,7 @@
     const homeButton = document.getElementById('home-button');
     const warning = document.getElementById('warning');
     const avgRatingBox = document.getElementById('average-rating');
+    const mealText = document.getElementById('meal');
 
     let menus = [];
     const ratings = {};
@@ -48,7 +48,6 @@
     const canRate = (hour > 13 || (hour === 13 && minute >= 0)) && (hour < 24);
 
     async function fetchMeal() {
-      // 오늘 날짜를 YYYYMMDD 형식으로 (서울 기준)
       const today = new Date().toLocaleDateString('ko-KR', {
         timeZone: 'Asia/Seoul',
         year: 'numeric',
@@ -57,7 +56,7 @@
       }).replace(/\. /g, '').replace('.', '');
 
       const url = `https://open.neis.go.kr/hub/mealServiceDietInfo?KEY=12524cf433f544708e5fdec54b0ba13d&Type=json&ATPT_OFCDC_SC_CODE=J10&SD_SCHUL_CODE=7530858&MLSV_YMD=${today}`;
-      console.log('요청 URL:', url); // 콘솔에서 확인 가능
+      console.log('요청 URL:', url);
 
       try {
         const response = await fetch(url);
@@ -66,205 +65,15 @@
         const mealInfo = data.mealServiceDietInfo?.[1]?.row?.[0]?.DDISH_NM;
 
         if (mealInfo) {
-          // <br/> 태그를 실제 줄바꿈으로 바꾸기
           const mealFormatted = mealInfo.replace(/<br\/?>/g, '\n');
-          document.getElementById('meal').innerText = mealFormatted;
+          mealText.innerText = mealFormatted;
+          menus = mealFormatted.split('\n').filter(Boolean);
         } else {
-          document.getElementById('meal').innerText = '오늘은 등록된 급식이 없습니다.';
+          mealText.innerText = '오늘은 등록된 급식이 없습니다.';
         }
       } catch (error) {
         console.error('급식 정보 가져오기 실패:', error);
-        document.getElementById('meal').innerText = '급식 정보를 불러오는 데 실패했습니다.';
-      }
-    }
-
-    async function showAverageRatings() {
-      const snapshot = await getDocs(collection(db, 'ratings'));
-      const sum = {}, count = {};
-
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        for (const menu in data) {
-          if (!sum[menu]) sum[menu] = 0;
-          if (!count[menu]) count[menu] = 0;
-          sum[menu] += data[menu];
-          count[menu]++;
-        }
-      });
-
-      const lines = Object.keys(sum).map(menu => {
-        const avg = (sum[menu] / count[menu]).toFixed(1);
-        return `${menu}: ⭐ ${avg}`;
-      });
-
-      avgRatingBox.innerHTML = lines.join('<br>');
-      avgRatingBox.classList.remove('hidden');
-    }
-
-    async function init() {
-      await fetchMealData();
-      showAverageRatings();
-
-      if (!canRate) {
-        rateButton.disabled = true;
-        rateButton.textContent = '평가 가능 시간은 오후 1시부터입니다';
-        return;
-      }
-
-      const docRef = doc(db, 'ratings', userId);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        rateButton.disabled = true;
-        rateButton.textContent = '이미 평가하셨습니다';
-      }
-    }
-
-    rateButton.addEventListener('click', () => {
-      if (menus.length === 0) return;
-      rateButton.classList.add('hidden');
-      mealBox.classList.add('hidden');
-      avgRatingBox.classList.add('hidden');
-      ratingSection.classList.remove('hidden');
-      showMenu(currentIndex);
-    });
-
-    function showMenu(index) {
-      const menu = menus[index];
-      menuTitle.textContent = `${menu}`;
-      renderStars(menu);
-      prevButton.disabled = index === 0;
-      nextButton.textContent = index === menus.length - 1 ? '제출' : '다음';
-      warning.textContent = '';
-    }
-
-    function renderStars(menu) {
-      const selected = ratings[menu] || 0;
-      starContainer.innerHTML = '';
-      for (let i = 1; i <= 5; i++) {
-        const star = document.createElement('span');
-        star.textContent = i <= selected ? '★' : '☆';
-        star.className = 'text-2xl cursor-pointer';
-        star.addEventListener('click', () => {
-          ratings[menu] = i;
-          renderStars(menu);
-        });
-        starContainer.appendChild(star);
-      }
-    }
-
-    prevButton.addEventListener('click', () => {
-      if (currentIndex > 0) {
-        currentIndex--;
-        showMenu(currentIndex);
-      }
-    });
-
-    nextButton.addEventListener('click', async () => {
-      const currentMenu = menus[currentIndex];
-      if (!ratings[currentMenu]) {
-        warning.textContent = '별점을 매겨주세요!';
-        return;
-      }
-
-      if (currentIndex < menus.length - 1) {
-        currentIndex++;
-        showMenu(currentIndex);
-      } else {
-        await setDoc(doc(db, 'ratings', userId), ratings);
-        ratingSection.classList.add('hidden');
-        thankYou.classList.remove('hidden');
-        showAverageRatings();
-      }
-    });
-
-    homeButton.addEventListener('click', () => {
-      location.reload();
-    });
-
-    window.onload = init;
-  </script>
-</head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen">
-  <div class="w-full max-w-md bg-white p-6 rounded-2xl shadow-md">
-    <h1 class="text-2xl font-bold mb-4 text-center">오늘의 급식</h1>
-    <div id="meal-box" class="bg-gray-50 p-4 rounded-xl border text-center mb-4">
-      급식 정<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>오늘의 급식 평점</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Firebase SDK v9 Modular Import Fix -->
-  <script type="module">
-    import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js';
-    import { getFirestore, collection, doc, getDoc, getDocs, setDoc } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js';
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyCuOQ3EYAMl5IRwNXhc4mcf9RgpoURnOgA",
-      authDomain: "mealrate-b757a.firebaseapp.com",
-      projectId: "mealrate-b757a",
-      storageBucket: "mealrate-b757a.appspot.com",
-      messagingSenderId: "427937261811",
-      appId: "1:427937261811:web:f70ced07ba5e41f9bcef86",
-      measurementId: "G-1X5LLJ4437"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-
-    const rateButton = document.getElementById('rate-button');
-    const ratingSection = document.getElementById('rating-section');
-    const mealBox = document.getElementById('meal-box');
-    const menuTitle = document.getElementById('menu-title');
-    const starContainer = document.getElementById('star-container');
-    const prevButton = document.getElementById('prev-button');
-    const nextButton = document.getElementById('next-button');
-    const thankYou = document.getElementById('thank-you');
-    const homeButton = document.getElementById('home-button');
-    const warning = document.getElementById('warning');
-    const avgRatingBox = document.getElementById('average-rating');
-
-    let menus = [];
-    const ratings = {};
-    let currentIndex = 0;
-
-    const userId = localStorage.getItem('meal-rating-id') || crypto.randomUUID();
-    localStorage.setItem('meal-rating-id', userId);
-
-    const now = new Date();
-    const hour = now.getHours();
-    const minute = now.getMinutes();
-    const canRate = (hour > 13 || (hour === 13 && minute >= 0)) && (hour < 24);
-
-    async function fetchMeal() {
-      // 오늘 날짜를 YYYYMMDD 형식으로 (서울 기준)
-      const today = new Date().toLocaleDateString('ko-KR', {
-        timeZone: 'Asia/Seoul',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      }).replace(/\. /g, '').replace('.', '');
-
-      const url = `https://open.neis.go.kr/hub/mealServiceDietInfo?KEY=12524cf433f544708e5fdec54b0ba13d&Type=json&ATPT_OFCDC_SC_CODE=J10&SD_SCHUL_CODE=7530858&MLSV_YMD=${today}`;
-      console.log('요청 URL:', url); // 콘솔에서 확인 가능
-
-      try {
-        const response = await fetch(url);
-        const data = await response.json();
-
-        const mealInfo = data.mealServiceDietInfo?.[1]?.row?.[0]?.DDISH_NM;
-
-        if (mealInfo) {
-          // <br/> 태그를 실제 줄바꿈으로 바꾸기
-          const mealFormatted = mealInfo.replace(/<br\/?>/g, '\n');
-          document.getElementById('meal').innerText = mealFormatted;
-        } else {
-          document.getElementById('meal').innerText = '오늘은 등록된 급식이 없습니다.';
-        }
-      } catch (error) {
-        console.error('급식 정보 가져오기 실패:', error);
-        document.getElementById('meal').innerText = '급식 정보를 불러오는 데 실패했습니다.';
+        mealText.innerText = '급식 정보를 불러오는 데 실패했습니다.';
       }
     }
 
@@ -378,33 +187,7 @@
   <div class="w-full max-w-md bg-white p-6 rounded-2xl shadow-md">
     <h1 class="text-2xl font-bold mb-4 text-center">오늘의 급식</h1>
     <div id="meal-box" class="bg-gray-50 p-4 rounded-xl border text-center mb-4">
-      급식 정보를 불러오는 중...
-    </div>
-    <div id="average-rating" class="text-center text-sm text-gray-600 mb-2 hidden">
-      현재 평점 계산 중...
-    </div>
-    <button id="rate-button" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-xl disabled:opacity-50">
-      평가하기
-    </button>
-    <div id="rating-section" class="mt-6 hidden text-center">
-      <div id="rating-box" class="bg-gray-50 p-4 rounded-xl border">
-        <div id="menu-title" class="text-lg font-semibold mb-2"></div>
-        <div id="star-container" class="flex justify-center space-x-1 mb-2"></div>
-        <div id="warning" class="text-red-500 text-sm h-4 mb-2"></div>
-        <div class="flex justify-between">
-          <button id="prev-button" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-xl">이전</button>
-          <button id="next-button" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-1 px-3 rounded-xl">다음</button>
-        </div>
-      </div>
-    </div>
-    <div id="thank-you" class="mt-6 hidden text-center">
-      <p class="text-green-600 font-semibold">제출되었습니다. 감사합니다! 🌟</p>
-      <button id="home-button" class="mt-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-xl">홈으로</button>
-    </div>
-  </div>
-</body>
-</html>
-보를 불러오는 중...
+      <div id="meal" class="whitespace-pre-line">급식 정보를 불러오는 중...</div>
     </div>
     <div id="average-rating" class="text-center text-sm text-gray-600 mb-2 hidden">
       현재 평점 계산 중...
