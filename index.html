@@ -5,40 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>오늘의 급식 평점</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js"></script>
-</head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen">
-  <div class="w-full max-w-md bg-white p-6 rounded-2xl shadow-md">
-    <h1 class="text-2xl font-bold mb-4 text-center">오늘의 급식</h1>
-    <div id="meal-box" class="bg-gray-50 p-4 rounded-xl border text-center mb-4">
-      급식 정보를 불러오는 중...
-    </div>
-    <div id="average-rating" class="text-center text-sm text-gray-600 mb-2 hidden">
-      현재 평점 계산 중...
-    </div>
-    <button id="rate-button" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-xl disabled:opacity-50">
-      평가하기
-    </button>
-    <div id="rating-section" class="mt-6 hidden text-center">
-      <div id="rating-box" class="bg-gray-50 p-4 rounded-xl border">
-        <div id="menu-title" class="text-lg font-semibold mb-2"></div>
-        <div id="star-container" class="flex justify-center space-x-1 mb-2"></div>
-        <div id="warning" class="text-red-500 text-sm h-4 mb-2"></div>
-        <div class="flex justify-between">
-          <button id="prev-button" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-xl">이전</button>
-          <button id="next-button" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-1 px-3 rounded-xl">다음</button>
-        </div>
-      </div>
-    </div>
-    <div id="thank-you" class="mt-6 hidden text-center">
-      <p class="text-green-600 font-semibold">제출되었습니다. 감사합니다! 🌟</p>
-      <button id="home-button" class="mt-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-xl">홈으로</button>
-    </div>
-  </div>
+  <!-- Firebase SDK v9 Modular Import Fix -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js';
+    import { getFirestore, collection, doc, getDoc, getDocs, setDoc } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js';
 
-  <script>
     const firebaseConfig = {
       apiKey: "AIzaSyCuOQ3EYAMl5IRwNXhc4mcf9RgpoURnOgA",
       authDomain: "mealrate-b757a.firebaseapp.com",
@@ -49,8 +20,8 @@
       measurementId: "G-1X5LLJ4437"
     };
 
-    const app = firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
 
     const rateButton = document.getElementById('rate-button');
     const ratingSection = document.getElementById('rating-section');
@@ -76,7 +47,6 @@
     const minute = now.getMinutes();
     const canRate = (hour > 13 || (hour === 13 && minute >= 0)) && (hour < 24);
 
-    // 급식 정보 가져오기
     async function fetchMealData() {
       const now = new Date();
       const korea = new Date(now.getTime() + 9 * 60 * 60 * 1000);
@@ -84,7 +54,6 @@
       const mm = String(korea.getMonth() + 1).padStart(2, '0');
       const dd = String(korea.getDate()).padStart(2, '0');
       const today = `${yyyy}${mm}${dd}`;
-
       const url = `https://open.neis.go.kr/hub/mealServiceDietInfo?KEY=12524cf433f544708e5fdec54b0ba13d&Type=json&ATPT_OFCDC_SC_CODE=J10&SD_SCHUL_CODE=7530858&MLSV_YMD=${today}`;
       console.log("API URL:", url);
 
@@ -92,9 +61,9 @@
         const res = await fetch(url);
         const data = await res.json();
         const meal = data?.mealServiceDietInfo?.[1]?.row?.[0]?.DDISH_NM;
-        const cleanMeal = meal?.replace(/<br\/>/g, '\n').replace(/[^]+/g, '');
+        const cleanMeal = meal?.replace(/<br\/>/g, '\n').replace(/\uff01[^\uff01]+\uff01/g, '');
         mealBox.innerText = cleanMeal || '오늘은 급식이 없습니다!';
-        menus = cleanMeal?.split(/\n|<br\/>/)?.map(m => m.trim()).filter(Boolean) || [];
+        menus = cleanMeal?.split(/\n/)?.map(m => m.trim()).filter(Boolean) || [];
       } catch (err) {
         console.error('급식 불러오기 실패:', err);
         mealBox.innerText = '급식 정보를 불러올 수 없습니다.';
@@ -102,7 +71,7 @@
     }
 
     async function showAverageRatings() {
-      const snapshot = await db.collection('ratings').get();
+      const snapshot = await getDocs(collection(db, 'ratings'));
       const sum = {}, count = {};
 
       snapshot.forEach(doc => {
@@ -134,8 +103,9 @@
         return;
       }
 
-      const doc = await db.collection('ratings').doc(userId).get();
-      if (doc.exists) {
+      const docRef = doc(db, 'ratings', userId);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
         rateButton.disabled = true;
         rateButton.textContent = '이미 평가하셨습니다';
       }
@@ -192,7 +162,7 @@
         currentIndex++;
         showMenu(currentIndex);
       } else {
-        await db.collection('ratings').doc(userId).set(ratings);
+        await setDoc(doc(db, 'ratings', userId), ratings);
         ratingSection.classList.add('hidden');
         thankYou.classList.remove('hidden');
         showAverageRatings();
@@ -205,5 +175,34 @@
 
     window.onload = init;
   </script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+  <div class="w-full max-w-md bg-white p-6 rounded-2xl shadow-md">
+    <h1 class="text-2xl font-bold mb-4 text-center">오늘의 급식</h1>
+    <div id="meal-box" class="bg-gray-50 p-4 rounded-xl border text-center mb-4">
+      급식 정보를 불러오는 중...
+    </div>
+    <div id="average-rating" class="text-center text-sm text-gray-600 mb-2 hidden">
+      현재 평점 계산 중...
+    </div>
+    <button id="rate-button" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-xl disabled:opacity-50">
+      평가하기
+    </button>
+    <div id="rating-section" class="mt-6 hidden text-center">
+      <div id="rating-box" class="bg-gray-50 p-4 rounded-xl border">
+        <div id="menu-title" class="text-lg font-semibold mb-2"></div>
+        <div id="star-container" class="flex justify-center space-x-1 mb-2"></div>
+        <div id="warning" class="text-red-500 text-sm h-4 mb-2"></div>
+        <div class="flex justify-between">
+          <button id="prev-button" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-xl">이전</button>
+          <button id="next-button" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-1 px-3 rounded-xl">다음</button>
+        </div>
+      </div>
+    </div>
+    <div id="thank-you" class="mt-6 hidden text-center">
+      <p class="text-green-600 font-semibold">제출되었습니다. 감사합니다! 🌟</p>
+      <button id="home-button" class="mt-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-xl">홈으로</button>
+    </div>
+  </div>
 </body>
 </html>
