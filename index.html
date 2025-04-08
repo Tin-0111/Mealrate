@@ -86,7 +86,7 @@
     // 급식 정보 가져오기
     async function fetchMealData() {
       const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
-      const url = `https://open.neis.go.kr/hub/mealServiceDietInfo?KEY=12524cf433f544708e5fdec54b0ba13d&Type=json&ATPT_OFCDC_SC_CODE=J10&SD_SCHUL_CODE=7530037&MLSV_YMD=${today}`;
+      const url = `https://open.neis.go.kr/hub/mealServiceDietInfo?KEY=12524cf433f544708e5fdec54b0ba13d&Type=json&ATPT_OFCDC_SC_CODE=J10&SD_SCHUL_CODE=7530858&MLSV_YMD=${today}`;
       try {
         const res = await fetch(url);
         const data = await res.json();
