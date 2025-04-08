@@ -6,8 +6,8 @@
   <title>오늘의 급식 평점</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js"></script>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
   <div class="w-full max-w-md bg-white p-6 rounded-2xl shadow-md">
@@ -15,7 +15,7 @@
 
     <!-- 급식 메뉴 상자 -->
     <div id="meal-box" class="bg-gray-50 p-4 rounded-xl border text-center mb-4">
-      🍚 밥<br />🍗 치킨<br />🥗 샐러드
+      급식 정보를 불러오는 중...
     </div>
 
     <!-- 현재 평점 표시 -->
@@ -55,17 +55,8 @@
       measurementId: "G-1X5LLJ4437"
     };
 
-    firebase.initializeApp(firebaseConfig);
+    const app = firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
-
-    const menus = ['밥', '치킨', '샐러드'];
-    const ratings = {};
-    let currentIndex = 0;
-
-    const now = new Date();
-    const hour = now.getHours();
-    const minute = now.getMinutes();
-    const canRate = (hour > 13 || (hour === 13 && minute >= 0)) && (hour < 24);
 
     const rateButton = document.getElementById('rate-button');
     const ratingSection = document.getElementById('rating-section');
@@ -79,37 +70,52 @@
     const warning = document.getElementById('warning');
     const avgRatingBox = document.getElementById('average-rating');
 
-    // 유저 ID (간단하게 로컬 스토리지 사용)
+    let menus = [];
+    const ratings = {};
+    let currentIndex = 0;
+
+    // 유저 ID
     const userId = localStorage.getItem('meal-rating-id') || crypto.randomUUID();
     localStorage.setItem('meal-rating-id', userId);
 
-    // 이미 평가했는지 확인
-    db.collection('ratings').doc(userId).get().then(doc => {
-      if (doc.exists) {
-        rateButton.disabled = true;
-        rateButton.textContent = '이미 평가하셨습니다';
-      }
-    });
+    const now = new Date();
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+    const canRate = (hour > 13 || (hour === 13 && minute >= 0)) && (hour < 24);
 
-    // 평균 평점 표시
+    // 급식 정보 가져오기
+    async function fetchMealData() {
+      const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+      const url = `https://open.neis.go.kr/hub/mealServiceDietInfo?KEY=12524cf433f544708e5fdec54b0ba13d&Type=json&ATPT_OFCDC_SC_CODE=J10&SD_SCHUL_CODE=7530037&MLSV_YMD=${today}`;
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        const meal = data?.mealServiceDietInfo?.[1]?.row?.[0]?.DDISH_NM;
+        const cleanMeal = meal?.replace(/<br\/>/g, '\n').replace(/\([^\)]+\)/g, '');
+        mealBox.innerText = cleanMeal || '오늘은 급식이 없습니다!';
+        menus = cleanMeal?.split(/\n|<br\/>/)?.map(m => m.trim()).filter(Boolean) || [];
+      } catch (err) {
+        console.error('급식 불러오기 실패:', err);
+        mealBox.innerText = '급식 정보를 불러올 수 없습니다.';
+      }
+    }
+
     async function showAverageRatings() {
       const snapshot = await db.collection('ratings').get();
       const sum = {}, count = {};
 
       snapshot.forEach(doc => {
         const data = doc.data();
-        for (const menu of menus) {
+        for (const menu in data) {
           if (!sum[menu]) sum[menu] = 0;
           if (!count[menu]) count[menu] = 0;
-          if (data[menu]) {
-            sum[menu] += data[menu];
-            count[menu]++;
-          }
+          sum[menu] += data[menu];
+          count[menu]++;
         }
       });
 
-      const lines = menus.map(menu => {
-        const avg = count[menu] ? (sum[menu] / count[menu]).toFixed(1) : '-';
+      const lines = Object.keys(sum).map(menu => {
+        const avg = (sum[menu] / count[menu]).toFixed(1);
         return `${menu}: ⭐ ${avg}`;
       });
 
@@ -117,14 +123,25 @@
       avgRatingBox.classList.remove('hidden');
     }
 
-    showAverageRatings();
+    async function init() {
+      await fetchMealData();
+      showAverageRatings();
 
-    if (!canRate) {
-      rateButton.disabled = true;
-      rateButton.textContent = '평가 가능 시간은 오후 1시부터입니다';
+      if (!canRate) {
+        rateButton.disabled = true;
+        rateButton.textContent = '평가 가능 시간은 오후 1시부터입니다';
+        return;
+      }
+
+      const doc = await db.collection('ratings').doc(userId).get();
+      if (doc.exists) {
+        rateButton.disabled = true;
+        rateButton.textContent = '이미 평가하셨습니다';
+      }
     }
 
     rateButton.addEventListener('click', () => {
+      if (menus.length === 0) return;
       rateButton.classList.add('hidden');
       mealBox.classList.add('hidden');
       avgRatingBox.classList.add('hidden');
@@ -174,7 +191,6 @@
         currentIndex++;
         showMenu(currentIndex);
       } else {
-        // 제출
         await db.collection('ratings').doc(userId).set(ratings);
         ratingSection.classList.add('hidden');
         thankYou.classList.remove('hidden');
@@ -185,6 +201,8 @@
     homeButton.addEventListener('click', () => {
       location.reload();
     });
+
+    window.onload = init;
   </script>
 </body>
 </html>
