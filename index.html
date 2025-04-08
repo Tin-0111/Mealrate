@@ -47,28 +47,38 @@
     const minute = now.getMinutes();
     const canRate = (hour > 13 || (hour === 13 && minute >= 0)) && (hour < 24);
 
-    async function fetchMealData() {
-      const now = new Date();
-      const korea = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-      const yyyy = korea.getFullYear();
-      const mm = String(korea.getMonth() + 1).padStart(2, '0');
-      const dd = String(korea.getDate()).padStart(2, '0');
-      const today = `${yyyy}${mm}${dd}`;
+    async function fetchMeal() {
+      // 오늘 날짜를 YYYYMMDD 형식으로 (서울 기준)
+      const today = new Date().toLocaleDateString('ko-KR', {
+        timeZone: 'Asia/Seoul',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).replace(/\. /g, '').replace('.', '');
+
       const url = `https://open.neis.go.kr/hub/mealServiceDietInfo?KEY=12524cf433f544708e5fdec54b0ba13d&Type=json&ATPT_OFCDC_SC_CODE=J10&SD_SCHUL_CODE=7530858&MLSV_YMD=${today}`;
-      console.log("API URL:", url);
+      console.log('요청 URL:', url); // 콘솔에서 확인 가능
 
       try {
-        const res = await fetch(url);
-        const data = await res.json();
-        const meal = data?.mealServiceDietInfo?.[1]?.row?.[0]?.DDISH_NM;
-        const cleanMeal = meal?.replace(/<br\/>/g, '\n').replace(/\uff01[^\uff01]+\uff01/g, '');
-        mealBox.innerText = cleanMeal || '오늘은 급식이 없습니다!';
-        menus = cleanMeal?.split(/\n/)?.map(m => m.trim()).filter(Boolean) || [];
-      } catch (err) {
-        console.error('급식 불러오기 실패:', err);
-        mealBox.innerText = '급식 정보를 불러올 수 없습니다.';
+        const response = await fetch(url);
+        const data = await response.json();
+
+        const mealInfo = data.mealServiceDietInfo?.[1]?.row?.[0]?.DDISH_NM;
+
+        if (mealInfo) {
+          // <br/> 태그를 실제 줄바꿈으로 바꾸기
+          const mealFormatted = mealInfo.replace(/<br\/?>/g, '\n');
+          document.getElementById('meal').innerText = mealFormatted;
+        } else {
+          document.getElementById('meal').innerText = '오늘은 등록된 급식이 없습니다.';
+        }
+      } catch (error) {
+        console.error('급식 정보 가져오기 실패:', error);
+        document.getElementById('meal').innerText = '급식 정보를 불러오는 데 실패했습니다.';
       }
     }
+
+    fetchMeal();
 
     async function showAverageRatings() {
       const snapshot = await getDocs(collection(db, 'ratings'));
