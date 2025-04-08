@@ -27,6 +27,13 @@
     localStorage.setItem('meal-rating-id', userId);
 
     const now = new Date();
+    const today = new Date().toLocaleDateString('ko-KR', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).replace(/\. /g, '').replace('.', '');
+
     const hour = now.getHours();
     const minute = now.getMinutes();
     const canRate = (hour > 13 || (hour === 13 && minute >= 0)) && (hour < 24);
@@ -53,13 +60,6 @@
     const homeButton = document.getElementById('home-button');
 
     async function fetchMealData() {
-      const today = new Date().toLocaleDateString('ko-KR', {
-        timeZone: 'Asia/Seoul',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      }).replace(/\. /g, '').replace('.', '');
-
       const url = `https://open.neis.go.kr/hub/mealServiceDietInfo?KEY=12524cf433f544708e5fdec54b0ba13d&Type=json&ATPT_OFCDC_SC_CODE=J10&SD_SCHUL_CODE=7530858&MLSV_YMD=${today}`;
 
       try {
@@ -83,9 +83,9 @@
       avgHistory.innerHTML = '';
       avgToday.innerHTML = '';
 
-      const [snapshots, todaySnap] = await Promise.all([
+      const [historySnap, todaySnap] = await Promise.all([
         getDocs(collection(db, 'history')),
-        getDocs(collection(db, 'ratings'))
+        getDocs(collection(db, `ratings-${today}`))
       ]);
 
       const todaySum = {}, todayCount = {};
@@ -110,7 +110,7 @@
       avgToday.innerHTML = todayLines.join('');
 
       const historyMap = {};
-      snapshots.forEach(doc => {
+      historySnap.forEach(doc => {
         if (!menus.includes(doc.id)) return;
         historyMap[doc.id] = doc.data();
       });
@@ -177,7 +177,7 @@
         currentIndex++;
         showMenu(currentIndex);
       } else {
-        await setDoc(doc(db, 'ratings', userId), ratings);
+        await setDoc(doc(db, `ratings-${today}`, userId), ratings);
 
         for (const menu in ratings) {
           const menuRef = doc(db, 'history', menu);
@@ -216,7 +216,7 @@
       await fetchMealData();
       await showRatings();
 
-      const ratedSnap = await getDoc(doc(db, 'ratings', userId));
+      const ratedSnap = await getDoc(doc(db, `ratings-${today}`, userId));
       if (ratedSnap.exists()) {
         rateButton.disabled = true;
         rateButton.textContent = '이미 평가하셨습니다';
