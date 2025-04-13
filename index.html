@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!OCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
@@ -107,7 +107,78 @@
         location.reload();
       });
 
-      // 이하 기존 평가, 급식 데이터 가져오기 등의 코드 유지…
+      //역대 기록 버튼
+      historyButton?.addEventListener('click', async () => {
+        if (!historySection.classList.contains('hidden')) {
+          historySection.classList.add('hidden');
+          return;
+        }
+        historyList.innerHTML = '불러오는 중...';
+        historySection.classList.remove('hidden');
+        const selectedSchool = JSON.parse(localStorage.getItem('selected-school'));
+        const schoolKey = `${selectedSchool.atpt}_${selectedSchool.code}`;
+        const historyRef = collection(db, `history-${schoolKey}`);
+        const historySnap = await getDocs(historyRef);
+        const todayMenus = new Set(menus);
+        const items = [];
+        const ratingMap = {};
+      historySnap.forEach(doc => {
+        if (todayMenus.has(doc.id)) {
+          const { sum, count } = doc.data();
+          const avg = (sum / count).toFixed(1);
+          ratingMap[doc.id] = { avg, count };
+        }
+      });
+      items.length = 0;
+      menus.forEach(menu => {
+        if (ratingMap[menu]) {
+          const { avg, count } = ratingMap[menu];
+          items.push(`<li>${menu}: ⭐ ${avg} (${count}명 참여)</li>`);
+        }
+      });
+        historyList.innerHTML = items.length
+          ? items.join('')
+          : '<li>아직 평가 기록이 없습니다.</li>';
+      });
+
+      //오늘 평가 기록 버튼
+      todayRatingButton?.addEventListener('click', async () => {
+        if (!todayRatingSection.classList.contains('hidden')) {
+          todayRatingSection.classList.add('hidden');
+          return;
+        }
+        todayRatingList.innerHTML = '불러오는 중...';
+        todayRatingSection.classList.remove('hidden');
+        const selectedSchool = JSON.parse(localStorage.getItem('selected-school'));
+        const schoolKey = `${selectedSchool.atpt}_${selectedSchool.code}`;
+        const todayRatingRef = collection(db, `ratings-${today}-${schoolKey}`);
+        const snap = await getDocs(todayRatingRef);
+        const allRatings = {};
+        snap.forEach(doc => {
+          const data = doc.data();
+          for (const [menu, score] of Object.entries(data)) {
+            if (!allRatings[menu]) {
+              allRatings[menu] = { sum: 0, count: 0 };
+            }
+            allRatings[menu].sum += score;
+            allRatings[menu].count += 1;
+          }
+        });
+        const ratingMap = {};
+        for (const [menu, { sum, count }] of Object.entries(allRatings)) {
+          ratingMap[menu] = { avg: (sum / count).toFixed(1), count };
+        }
+        const items = menus.map(menu => {
+          const rating = ratingMap[menu];
+          if (rating) {
+            return `<li>${menu}: ⭐ ${rating.avg} (${rating.count}명 참여)</li>`;
+          }
+          return null;
+        }).filter(Boolean);
+        todayRatingList.innerHTML = items.length ? items.join('') : '<li>아직 오늘 평가가 없습니다.</li>';
+      });
+
+      //급식 정보
       async function fetchMealData() {
         const selectedSchool = JSON.parse(localStorage.getItem('selected-school') || '{}');
         const { atpt: eduCode, code: schoolCode } = selectedSchool;
@@ -121,7 +192,7 @@
           const data = await response.json();
           const mealInfo = data.mealServiceDietInfo?.[1]?.row?.[0]?.DDISH_NM;
           if (mealInfo) {
-            const mealFormatted = mealInfo.replace(/<br\/?>(\d+[.\d]*)*/g, '\n').replace(/[^)]*/g, '');
+            const mealFormatted = mealInfo.replace(/<br\/?>(\(\d+[.\d]*\))*/g, '\n').replace(/\([^)]*\)/g, '');
             mealBox.innerText = mealFormatted;
             menus = mealFormatted.split('\n').filter(m => m.trim());
           } else {
@@ -132,7 +203,7 @@
         }
       }
 
-      // 평가 제출 등 나머지 평가 로직...
+      //평가
       async function submitRatings() {
         const selectedSchool = JSON.parse(localStorage.getItem('selected-school'));
         const schoolKey = `${selectedSchool.atpt}_${selectedSchool.code}`;
@@ -152,9 +223,80 @@
         ratingSection.classList.add('hidden');
         thankYou.classList.remove('hidden');
       }
-      
-      // ... 평가 진행 관련 코드 (showMenu, renderStars, 버튼 이벤트 등)
 
+      //평가(메뉴보여주기)
+      function showMenu(index) {
+        const menu = menus[index];
+        menuTitle.textContent = menu;
+        renderStars(menu);
+        prevButton.disabled = index === 0;
+        nextButton.textContent = index === menus.length - 1 ? '제출' : '다음';
+        warning.textContent = '';
+      }
+
+      //평가(별)
+      function renderStars(menu) {
+        const selected = ratings[menu] || 0;
+        starContainer.innerHTML = '';
+        for (let i = 1; i <= 5; i++) {
+          const star = document.createElement('span');
+          star.textContent = i <= selected ? '★' : '☆';
+          star.className = 'text-2xl cursor-pointer';
+          star.addEventListener('click', () => {
+            ratings[menu] = i;
+            renderStars(menu);
+          });
+          starContainer.appendChild(star);
+        }
+      }
+
+      //평가 버튼
+      rateButton.addEventListener('click', () => {
+        if (!menus.length) return;
+        rateButton.classList.add('hidden');
+        mealBox.classList.add('hidden');
+        ratingSection.classList.remove('hidden');
+        showMenu(currentIndex);
+      });
+
+      //이전 버튼
+      prevButton.addEventListener('click', () => {
+        if (currentIndex > 0) {
+          currentIndex--;
+          showMenu(currentIndex);
+        }
+      });
+
+      //스킵 버튼
+      const skipButton = document.getElementById('skip-button');
+      skipButton.addEventListener('click', () => {
+        const currentMenu = menus[currentIndex];
+        delete ratings[currentMenu]; // 기록 제거
+        if (currentIndex < menus.length - 1) {
+          currentIndex++;
+          showMenu(currentIndex);
+        } else {
+          submitRatings();
+        }
+      });
+
+      //다음 버튼
+      nextButton.addEventListener('click', async () => {
+        const currentMenu = menus[currentIndex];
+        if (!ratings[currentMenu]) {
+          warning.textContent = '별점을 매겨주세요!';
+          return;
+        }
+        if (currentIndex < menus.length - 1) {
+          currentIndex++;
+          showMenu(currentIndex);
+        } else {
+          submitRatings();
+        }
+      });
+
+      //홈버튼
+      homeButton.addEventListener('click', () => location.reload());
       async function init() {
         await fetchMealData();
         const selectedSchool = JSON.parse(localStorage.getItem('selected-school'));
@@ -166,14 +308,18 @@
           rateButton.textContent = '이미 평가하셨습니다';
         }
 
-        document.getElementById("cancel-button").addEventListener("click", () => {
-          currentIndex = 0;
-          document.getElementById("rating-section").classList.add("hidden");
-          document.getElementById("meal-box").classList.remove("hidden");
-          document.getElementById("rate-button").classList.remove("hidden");
-        });
+      document.getElementById("cancel-button").addEventListener("click", () => {
+        currentIndex = 0;
+        document.getElementById("rating-section").classList.add("hidden");
+        document.getElementById("meal-box").classList.remove("hidden");
+        document.getElementById("rate-button").classList.remove("hidden");
+      });
 
-        // if (!canRate) { ... 시간 조건 관련 처리 }
+        //시간
+        //if (!canRate) {
+          //rateButton.disabled = true;
+          //rateButton.textContent = '평가 가능 시간은 오후 1시부터입니다';
+        //}
       }
       init();
     });
